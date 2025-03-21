@@ -36,6 +36,9 @@ SECTIONS
     .bss : {
         *(.bss)
     }
+    
+    /* Export the end of kernel symbol */
+    end = .;
 
     /* Discard unnecessary sections */
     /DISCARD/ : {

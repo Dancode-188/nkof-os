@@ -71,10 +71,13 @@ nasm -f elf32 kernel/arch/x86_64/entry.asm -o build/kernel_entry.o
 echo "Compiling kernel C files..."
 gcc -m32 -c kernel/kernel.c -o build/kernel.o -ffreestanding -O2 -Wall -Wextra
 gcc -m32 -c kernel/console.c -o build/console.o -ffreestanding -O2 -Wall -Wextra
+gcc -m32 -c kernel/mm/pmm.c -o build/pmm.o -ffreestanding -O2 -Wall -Wextra
+gcc -m32 -c kernel/mm/paging.c -o build/paging.o -ffreestanding -O2 -Wall -Wextra
+gcc -m32 -c kernel/mm/kheap.c -o build/kheap.o -ffreestanding -O2 -Wall -Wextra
 
 # Link the kernel
 echo "Linking kernel..."
-ld -m elf_i386 -T kernel/kernel.ld -o build/kernel.bin build/kernel_entry.o build/kernel.o build/console.o -nostdlib
+ld -m elf_i386 -T kernel/kernel.ld -o build/kernel.bin build/kernel_entry.o build/kernel.o build/console.o build/pmm.o build/paging.o build/kheap.o -nostdlib
 
 # Check if kernel compilation was successful
 if [ $? -ne 0 ]; then

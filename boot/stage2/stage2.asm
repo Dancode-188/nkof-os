@@ -263,6 +263,9 @@ ProtectedModeEntry:
     call Print32
     
     ; Jump to the kernel at 0x100000 (1MB)
+    ; Pass memory map location in EBX and entry count in ECX
+    mov ebx, MemoryMapBuffer
+    movzx ecx, byte [MemoryMapEntries]
     jmp 0x08:0x100000
 
 ;--------------------------------------------------

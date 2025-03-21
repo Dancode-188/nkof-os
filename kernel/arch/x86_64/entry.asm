@@ -12,6 +12,10 @@ extern kernel_main
 ; Export our entry point to the linker
 global kernel_entry
 
+; Export memory map variables
+global boot_memory_map
+global boot_memory_map_count
+
 ; Multiboot header for compatibility (not required, but useful)
 section .multiboot
 align 4
@@ -21,6 +25,12 @@ align 4
 
 section .text
 kernel_entry:
+    ; Save memory map address passed by bootloader in EBX
+    mov [boot_memory_map], ebx
+    
+    ; Save memory map entry count passed by bootloader in ECX
+    mov [boot_memory_map_count], ecx
+    
     ; Set up kernel stack
     mov esp, kernel_stack_top
 
@@ -37,6 +47,10 @@ kernel_entry:
     cli                     ; Disable interrupts
     hlt                     ; Halt the CPU
     jmp .hang               ; Just in case an interrupt wakes up the CPU
+
+section .data
+boot_memory_map:       dd 0
+boot_memory_map_count: dd 0
 
 section .bss
 align 16
