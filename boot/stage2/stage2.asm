@@ -3,9 +3,8 @@
 ;
 ; This is loaded by the first stage bootloader and is responsible for:
 ; 1. Switching from real mode to protected mode
-; 2. Setting up a more robust environment
-; 3. Loading the kernel
-; 4. Transferring control to the kernel
+; 2. Loading the kernel
+; 3. Transferring control to the kernel
 
 [BITS 16]                       ; Still in 16-bit Real Mode initially
 [ORG 0x8000]                    ; Stage 2 will be loaded at this address
@@ -25,6 +24,9 @@ stage2_start:
     mov si, Stage2LoadedMsg
     call PrintString
 
+    ; Load the kernel into memory before switching to protected mode
+    call LoadKernel
+    
     ; Get memory map using BIOS interrupt
     call GetMemoryMap
     
@@ -38,6 +40,44 @@ stage2_start:
     mov si, ErrorMsg
     call PrintString
     jmp $                       ; Infinite loop
+
+;--------------------------------------------------
+; Function: LoadKernel
+; Loads the kernel from disk into memory
+;--------------------------------------------------
+LoadKernel:
+    mov si, LoadingKernelMsg
+    call PrintString
+    
+    ; Reset disk system
+    xor ax, ax
+    mov dl, [DriveId]           ; DriveId should be passed from stage1
+    int 0x13
+    jc .load_error
+    
+    ; Set up disk address packet for LBA disk read
+    mov si, KernelDAP
+    mov word [si], 0x0010       ; DAP size (16 bytes) and zero
+    mov word [si+2], 32         ; Number of sectors to read (16KB should be enough for now)
+    mov word [si+4], 0x0000     ; Offset to load to
+    mov word [si+6], 0x1000     ; Segment to load to (0x10000 physical)
+    mov dword [si+8], 5         ; Starting LBA (sector 5, after bootloaders)
+    mov dword [si+12], 0        ; Upper 32 bits of 48-bit LBA (unused)
+    
+    ; Read kernel using LBA
+    mov ah, 0x42                ; Extended read function
+    mov dl, [DriveId]
+    int 0x13
+    jc .load_error
+    
+    mov si, KernelLoadedMsg
+    call PrintString
+    ret
+    
+.load_error:
+    mov si, KernelErrorMsg
+    call PrintString
+    jmp $                       ; Halt on error
 
 ;--------------------------------------------------
 ; Function: PrintString (16-bit mode)
@@ -214,44 +254,47 @@ ProtectedModeEntry:
     ; Set up stack
     mov esp, 0x90000
     
-    ; Clear screen by writing to video memory
-    mov edi, 0xB8000            ; Video memory address
-    mov ecx, 80*25              ; Screen size (80 columns x 25 rows)
-    mov ax, 0x0720              ; Attribute (7) and space character (20h)
-    rep stosw                   ; Repeat store word
-    
     ; Display success message
-    mov edi, 0xB8000
     mov esi, ProtectedModeMsg
     call Print32
     
-    ; Halt the CPU
-.halt:
-    hlt
-    jmp .halt
+    ; Jump to the kernel
+    mov esi, KernelJumpMsg
+    call Print32
+    
+    ; Jump to the kernel at 0x100000 (1MB)
+    jmp 0x08:0x100000
 
 ;--------------------------------------------------
 ; Function: Print32 (32-bit Protected Mode)
 ; Prints a string to video memory
-; Input: ESI = String address, EDI = Video memory address
+; Input: ESI = String address
 ;--------------------------------------------------
 Print32:
-    push eax
-    push edi
+    pusha
+    mov edi, 0xB8000 + (24 * 80 * 2)  ; Start at the last line
+    
+.clear_line:
+    ; Clear the line
+    mov ecx, 80                       ; 80 columns
+    mov ax, 0x0720                    ; Black background, white foreground, space
+    rep stosw                         ; Repeat store word
+    
+    ; Reset to beginning of line
+    mov edi, 0xB8000 + (24 * 80 * 2)
     
 .loop:
-    lodsb                       ; Load next character
-    test al, al                 ; Check if end of string
+    lodsb                             ; Load next character
+    test al, al                       ; Check if end of string
     jz .done
     
-    mov ah, 0x0F                ; White text on black background
-    mov [edi], ax               ; Write to video memory
-    add edi, 2                  ; Next character position
+    mov ah, 0x0F                      ; White text on black background
+    mov [edi], ax                     ; Write to video memory
+    add edi, 2                        ; Next character position
     jmp .loop
     
 .done:
-    pop edi
-    pop eax
+    popa
     ret
 
 ;--------------------------------------------------
@@ -285,7 +328,12 @@ GDTDescriptor:
 ;--------------------------------------------------
 ; Data Section
 ;--------------------------------------------------
+DriveId:             db 0       ; This should be set by stage 1 bootloader
+
 Stage2LoadedMsg:      db 'Stage 2 bootloader loaded successfully', 13, 10, 0
+LoadingKernelMsg:     db 'Loading kernel...', 13, 10, 0
+KernelLoadedMsg:      db 'Kernel loaded successfully', 13, 10, 0
+KernelErrorMsg:       db 'Error loading kernel', 13, 10, 0
 MemMapMsg:            db 'Getting memory map...', 13, 10, 0
 MemMapErrorMsg:       db 'Error getting memory map', 13, 10, 0
 MemMapSuccessMsg:     db 'Memory map obtained. Entries: ', 0
@@ -293,9 +341,13 @@ PreparingProtectedMsg: db 'Preparing for protected mode...', 13, 10, 0
 EnteringProtectedMsg: db 'Entering protected mode...', 13, 10, 0
 ErrorMsg:             db 'Error: Should not reach here', 13, 10, 0
 ProtectedModeMsg:     db 'Successfully entered 32-bit Protected Mode!', 0
+KernelJumpMsg:        db 'Jumping to kernel...', 0
 
 ; Variables
 MemoryMapEntries:     db 0
+
+; Disk Address Packet for kernel load
+KernelDAP:            times 16 db 0
 
 ; Buffer for memory map (24 bytes per entry, max 20 entries = 480 bytes)
 MemoryMapBuffer:      times 480 db 0

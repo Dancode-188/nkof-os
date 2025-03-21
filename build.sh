@@ -10,6 +10,7 @@ mkdir -p boot/stage2
 GREEN='\033[0;32m'
 RED='\033[0;31m'
 YELLOW='\033[0;33m'
+BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
 echo -e "${GREEN}Building NKOF Operating System...${NC}"
@@ -32,7 +33,7 @@ if [ ! -f boot/stage2/stage2.asm ]; then
 fi
 
 # Assemble stage 1 bootloader
-echo "Assembling stage 1 bootloader..."
+echo -e "${BLUE}Assembling stage 1 bootloader...${NC}"
 nasm -f bin boot/stage1/bootloader.asm -o build/bootloader.bin
 
 # Check if assembly was successful
@@ -42,7 +43,7 @@ if [ $? -ne 0 ]; then
 fi
 
 # Assemble stage 2 bootloader
-echo "Assembling stage 2 bootloader..."
+echo -e "${BLUE}Assembling stage 2 bootloader...${NC}"
 nasm -f bin boot/stage2/stage2.asm -o build/stage2.bin
 
 # Check if assembly was successful
@@ -59,6 +60,28 @@ if [ "$STAGE2_SIZE" -eq "0" ]; then
     exit 1
 fi
 
+# Compile the kernel
+echo -e "${BLUE}Compiling kernel...${NC}"
+
+# Assemble kernel entry
+echo "Assembling kernel entry..."
+nasm -f elf32 kernel/arch/x86_64/entry.asm -o build/kernel_entry.o
+
+# Compile C files
+echo "Compiling kernel C files..."
+gcc -m32 -c kernel/kernel.c -o build/kernel.o -ffreestanding -O2 -Wall -Wextra
+gcc -m32 -c kernel/console.c -o build/console.o -ffreestanding -O2 -Wall -Wextra
+
+# Link the kernel
+echo "Linking kernel..."
+ld -m elf_i386 -T kernel/kernel.ld -o build/kernel.bin build/kernel_entry.o build/kernel.o build/console.o -nostdlib
+
+# Check if kernel compilation was successful
+if [ $? -ne 0 ]; then
+    echo -e "${RED}Error: Kernel compilation failed${NC}"
+    exit 1
+fi
+
 # Check if boot.img exists, create it if it doesn't
 if [ ! -f build/boot.img ]; then
     echo "Creating new disk image..."
@@ -67,7 +90,7 @@ if [ ! -f build/boot.img ]; then
 fi
 
 # Write bootloader to the disk image
-echo "Writing stage 1 bootloader to disk image..."
+echo -e "${BLUE}Writing stage 1 bootloader to disk image...${NC}"
 dd if=build/bootloader.bin of=build/boot.img bs=512 count=1 conv=notrunc
 
 # Check if write was successful
@@ -77,12 +100,22 @@ if [ $? -ne 0 ]; then
 fi
 
 # Write stage 2 bootloader to the disk image (at sector 1, right after the boot sector)
-echo "Writing stage 2 bootloader to disk image..."
+echo -e "${BLUE}Writing stage 2 bootloader to disk image...${NC}"
 dd if=build/stage2.bin of=build/boot.img bs=512 seek=1 conv=notrunc
 
 # Check if write was successful
 if [ $? -ne 0 ]; then
     echo -e "${RED}Error: Failed to write stage 2 bootloader to disk image${NC}"
+    exit 1
+fi
+
+# Write kernel to the disk image (at sector 5)
+echo -e "${BLUE}Writing kernel to disk image...${NC}"
+dd if=build/kernel.bin of=build/boot.img bs=512 seek=5 conv=notrunc
+
+# Check if write was successful
+if [ $? -ne 0 ]; then
+    echo -e "${RED}Error: Failed to write kernel to disk image${NC}"
     exit 1
 fi
 
