@@ -1,0 +1,27 @@
+# NKOF Bochs configuration file
+
+# ROM and VGA BIOS images
+romimage: file=/usr/share/bochs/BIOS-bochs-latest
+vgaromimage: file=/usr/share/bochs/VGABIOS-lgpl-latest
+
+# Boot drive configuration
+ata0: enabled=1, ioaddr1=0x1f0, ioaddr2=0x3f0, irq=14
+ata0-master: type=disk, path="build/boot.img", mode=flat, cylinders=20, heads=16, spt=63
+
+# CPU configuration
+cpu: count=1, ips=10000000, reset_on_triple_fault=1
+
+# Memory configuration
+memory: guest=32, host=32
+
+# Display configuration
+display_library: x, options="gui_debug"
+
+# Clock configuration
+clock: sync=none, time0=local
+
+# Debugging options
+info: action=report
+debug: action=ignore
+debugger_log: -
+log: bochs.log
