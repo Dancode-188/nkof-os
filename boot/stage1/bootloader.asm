@@ -31,9 +31,15 @@ start:
 
     ; Check for disk extensions
     call CheckDiskExtensions
+    jnc LoadError   ; If carry clear, extensions not supported
 
-    ; Halt the system (for now - will be replaced with stage 2 loading)
-    jmp HaltSystem
+    ; Load second stage bootloader
+    call LoadStage2
+    
+    ; Jump to second stage if loaded successfully
+    mov si, JumpingMsg
+    call PrintString
+    jmp 0:0x8000    ; Jump to stage 2 bootloader at 0x8000
 
 ;--------------------------------------------------
 ; Function: PrintString
@@ -98,13 +104,62 @@ HaltSystem:
     jmp .halt_loop          ; Just in case an interrupt occurs, halt again
 
 ;--------------------------------------------------
+; Function: LoadStage2
+; Loads the second stage bootloader from disk
+;--------------------------------------------------
+LoadStage2:
+    mov si, LoadingMsg
+    call PrintString
+
+    ; Reset disk system
+    xor ax, ax
+    mov dl, [DriveId]
+    int 0x13
+    jc LoadError
+
+    ; Set up disk address packet (DAP) for LBA disk read
+    mov si, DAP
+    mov word [si], 0x0010       ; DAP size (16 bytes) and zero
+    mov word [si+2], 4          ; Number of sectors to read (2048 bytes)
+    mov word [si+4], 0x8000     ; Offset to load to
+    mov word [si+6], 0          ; Segment to load to
+    mov dword [si+8], 1         ; Starting LBA (sector 1, right after boot sector)
+    mov dword [si+12], 0        ; Upper 32 bits of 48-bit LBA (unused)
+
+    ; Read sectors using LBA
+    mov ah, 0x42                ; Extended read function
+    mov dl, [DriveId]
+    int 0x13
+    jc LoadError
+
+    mov si, LoadedMsg
+    call PrintString
+    ret
+
+;--------------------------------------------------
+; Function: LoadError
+; Handles errors during loading
+;--------------------------------------------------
+LoadError:
+    mov si, ErrorMsg
+    call PrintString
+    jmp HaltSystem
+
+;--------------------------------------------------
 ; Data Section
 ;--------------------------------------------------
 DriveId:        db 0
 WelcomeMsg:     db 'NKOF Bootloader Initialized', 13, 10, 0
 DiskExtMsg:     db 'BIOS disk extensions available', 13, 10, 0
 NoDiskExtMsg:   db 'BIOS disk extensions not available', 13, 10, 0
+LoadingMsg:     db 'Loading Stage 2...', 13, 10, 0
+LoadedMsg:      db 'Stage 2 loaded successfully', 13, 10, 0
+JumpingMsg:     db 'Jumping to Stage 2', 13, 10, 0
+ErrorMsg:       db 'Error loading Stage 2', 13, 10, 0
 HaltMsg:        db 'System halted', 13, 10, 0
+
+; Disk Address Packet (DAP) structure for extended disk read
+DAP:            times 16 db 0
 
 ;--------------------------------------------------
 ; Boot Sector Padding and Signature
